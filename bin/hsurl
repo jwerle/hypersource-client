@@ -6,6 +6,7 @@ const minimist = require('minimist')
 const debug = require('debug')(DEBUG_LABEL)
 const hsurl = require('../')
 const pump = require('pump')
+const ram = require('random-access-memory')
 const pkg = require('../package.json')
 const url = require('url')
 
@@ -13,6 +14,8 @@ const { DEBUG = '' } = process.env
 
 const argv = minimist(process.argv.slice(2), {
   string: [
+    'encoding',
+    'utf8',
     'input',
     'output',
     'type',
@@ -20,6 +23,7 @@ const argv = minimist(process.argv.slice(2), {
   ],
 
   boolean: [
+    'stdout',
     'version',
     'debug',
     'help',
@@ -35,7 +39,8 @@ const argv = minimist(process.argv.slice(2), {
   },
 
   default: {
-    type: 'hypercore'
+    type: 'hypercore',
+    encoding: 'binary',
   }
 })
 
@@ -45,10 +50,14 @@ where options can be:
   -i, --input     Path to storage for input feed
   -o, --output    Path to storage for output feed
   -k, --key       Public key for storage feed
-  -t, --type      The feed type (eg: hypercore|hyperdrive|hypertrie...) (Default: hypercore)
+  -t, --type      The feed type (eg: hypercore|hyperdrive|hypertrie...) (Default: 'hypercore')
   -h, --help      Show this message
   -D, --debug     Enable debug output (DEBUG="${DEBUG_LABEL}")
   -V, --version   Show program version
+      --stdin     Read request from stdin
+      --stdout    Output response to stdout
+      --encoding  Set input encoding (--stdout) (Default: 'binary')
+      --utf8      Alias for '--enoding=utf8'
 `
 
 // enable 'debug()' if given from the command line are inferred from
@@ -69,8 +78,15 @@ if (argv.version) {
 }
 
 if (!argv.input) {
-  console.error('error: Please specify a path to a storage directory for an input feed')
-  process.exit(1)
+  argv.input = ram
+}
+
+if (!argv.output) {
+  argv.output = ram
+}
+
+if (argv.utf8) {
+  argv.encoding = 'utf8'
 }
 
 try {
@@ -84,11 +100,57 @@ try {
 
 const [ endpoint ] = argv._
 const input = require(argv.type)(argv.input, argv.key, argv)
-const client = hsurl(input, endpoint)
+let client = null
 
-client.connect(onconnect)
+if ('function' === typeof input.ready) {
+  input.ready(onready)
+} else {
+  input.on('ready', onready)
+}
+
+function update(hyper, cb) {
+  switch (argv.type) {
+    case 'hypercore': return hyper.update(cb)
+    case 'hypertrie': return hyper.feed.update(cb)
+    case 'hyperdb': return process.nextTick(cb)
+  }
+
+  if ('function' === typeof hyper.update) {
+    return hyper.update(cb)
+  }
+
+  if ('function' === typeof hyper.feed.update) {
+    return hyper.feed.update(cb)
+  }
+
+  return hyper.on('update', cb)
+}
+
+function sync(hyper, cb) {
+  switch (argv.type) {
+    case 'hypercore': return hyper.on('sync', cb)
+    case 'hypertrie': return hyper.feed.on('sync', cb)
+    case 'hyperdb': return process.nextTick(cb)
+  }
+
+  return hyper.on('sync', cb)
+}
+
+function onready() {
+  if ('hypercore' === argv.type) {
+    if (true !== process.stdin.isTTY || argv._.includes('-')) {
+      process.stdin.setEncoding(argv.encoding)
+      process.stdin.pipe(input.createWriteStream({ live: true }))
+    }
+  }
+
+  client = hsurl(input, endpoint)
+  client.connect(onconnect)
+}
 
 function onconnect(err, res, req, socket) {
+  let output = null
+
   if (err) {
     console.error('error:', err.message)
     debug(err)
@@ -96,17 +158,42 @@ function onconnect(err, res, req, socket) {
     return process.nextTick(process.exit, 1)
   }
 
-  res.once('update', () => {
-    const output = require(argv.type)(argv.output, res.key)
-    replicate(res, output, (err) => {
-      if (err) {
-        console.error('error:', err.message)
-        debug(err)
-        client.close()
-        return process.nextTick(process.exit, 1)
+  client.once('close', onclose)
+
+  update(res, onupdate)
+
+  function onclose() {
+    process.exit(0)
+  }
+
+  function onupdate() {
+    output = require(argv.type)(argv.output, res.key)
+    replicate(res, output, onreplicate)
+    sync(output, onsync)
+  }
+
+  function onreplicate(err) {
+    if (err) {
+      console.error('error:', err.message)
+      debug(err)
+      client.close()
+      return process.nextTick(process.exit, 1)
+    }
+
+ }
+
+  function onsync() {
+    if ('hypercore' === argv.type) {
+      if (true !== process.stdout.isTTY || argv.stdout) {
+        const stream = output.createReadStream()
+        stream.pipe(process.stdout)
+        stream.once('end', () => client.close())
+        return
       }
-    })
-  })
+    }
+
+    client.close()
+  }
 }
 
 function replicate(src, dst, cb) {
