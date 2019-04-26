@@ -35,7 +35,7 @@ test('hsurl(hypercore)', (t) => {
     })
   })
 
-  server.listen(0, (err) => {
+  server.listen(0, '127.0.0.1', (err) => {
     if (err) {
       throw err
     }
@@ -44,7 +44,7 @@ test('hsurl(hypercore)', (t) => {
     const message = Buffer.from('hello')
 
     feed.append(message, () => {
-      hsurl(feed, `ws://localhost:${port}`).connect((err, res) => {
+      const client = hsurl(feed, `ws://127.0.0.1:${port}`).connect((err, res) => {
         res.update(() => {
           res.head((err, buf) => {
             t.ok(
@@ -52,6 +52,7 @@ test('hsurl(hypercore)', (t) => {
               'does echo message over hypercore'
             )
             server.close()
+            client.close()
           })
         })
       })
@@ -78,7 +79,7 @@ test('hsurl(hyperdrive)', (t) => {
     })
   })
 
-  server.listen(0, (err) => {
+  server.listen(0, '127.0.0.1', (err) => {
     if (err) {
       throw err
     }
@@ -87,13 +88,14 @@ test('hsurl(hyperdrive)', (t) => {
     const message = Buffer.from('hello')
 
     drive.writeFile('message', message, (err) => {
-      hsurl(drive, `ws://localhost:${port}`).connect((err, res) => {
+      const client = hsurl(drive, `ws://127.0.0.1:${port}`).connect((err, res) => {
         res.readFile('message', (err, buf) => {
           t.ok(
             0 === Buffer.compare(buf, message),
             'does echo message over hyperdrive'
           )
           server.close()
+          client.close()
         })
       })
     })
@@ -118,7 +120,7 @@ test('hsurl(hypertrie)', (t) => {
     })
   })
 
-  server.listen(0, (err) => {
+  server.listen(0, '127.0.0.1', (err) => {
     if (err) {
       throw err
     }
@@ -128,7 +130,7 @@ test('hsurl(hypertrie)', (t) => {
 
     trie.ready(() => {
       trie.put('message', message, (err) => {
-        hsurl(trie, `ws://localhost:${port}`).connect((err, res) => {
+        const client = hsurl(trie, `ws://127.0.0.1:${port}`).connect((err, res) => {
           res.feed.update(() => {
             res.get('message', (err, node) => {
               t.ok(
@@ -136,6 +138,7 @@ test('hsurl(hypertrie)', (t) => {
                 'does echo message over hypertrie'
               )
               server.close()
+              client.close()
             })
           })
         })
@@ -149,23 +152,25 @@ test('hsurl(hyperdb)', (t) => {
 
   const db = hyperdb(ram)
   const server = hypersource((req, res) => {
-    const source = hyperdb(ram, req.key, req)
-    const echo = hyperdb(ram, res.key, res)
+    const source = hyperdb(ram, req.key)
+    const echo = hyperdb(ram, res.key, { secretKey: res.secretKey})
 
-    source.replicate(req)
-    pump(
-      source.createReadStream(),
-      through.obj(ontransform),
-      echo.createWriteStream(),
-      () => echo.replicate(res)
-    )
+    source.replicate(req).once('handshake', () => {
+
+      pump(
+        source.createReadStream(),
+        through.obj(ontransform),
+        echo.createWriteStream(),
+        () => echo.replicate(res)
+      )
+    })
 
     function ontransform(node, _, done) {
       return done(null, Object.assign(node, { type: 'put' }))
     }
   })
 
-  server.listen(0, (err) => {
+  server.listen(0, '127.0.0.1', (err) => {
     if (err) {
       throw err
     }
@@ -180,7 +185,7 @@ test('hsurl(hyperdb)', (t) => {
 
     db.ready(() => {
       db.batch(batch, (err) => {
-        hsurl(db, `ws://localhost:${port}`).connect((err, res) => {
+        const client = hsurl(db, `ws://127.0.0.1:${port}`).connect((err, res) => {
           res.list((err, nodes) => {
             const values = nodes.sort(sort).map((n) => n[0].value)
             t.ok(
@@ -189,9 +194,10 @@ test('hsurl(hyperdb)', (t) => {
                 Buffer.concat(values),
               )
             )
-          })
 
-          server.close()
+            client.close()
+            server.close()
+          })
 
           function sort(a, b) {
             const i = parseInt(a[0].key)
