@@ -1,36 +1,7 @@
-hypersource-client
-==================
-
-Simple client to talk to HyperSource endpoints
-
-## Installation
-
-```sh
-$ npm install hypersource-client
-```
-
-## Usage
-
-### Command Line
-
-> TODO
-
-### Programmatic
-
-> TODO
-
-## Example
-
-Below is an example of a
-[hypersource](https://github.com/jwerle/hypersource) server that echos
-a [hyperdrive](https://github.com/mafintosh/hyperdrive) back to the
-client and the exits.
-
-```js
 const hypersource = require('hypersource')
 const hyperdrive = require('hyperdrive')
 const mirror = require('mirror-folder')
-const hsurl = require('hypersource-client')
+const hsurl = require('../')
 const pump = require('pump')
 const path = require('path')
 const ram = require('random-access-memory')
@@ -107,12 +78,3 @@ function onconnect(err, res, req, socket) {
     })
   }
 }
-```
-
-## API
-
-> TODO
-
-## License
-
-MIT

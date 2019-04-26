@@ -1,0 +1,116 @@
+#!/usr/bin/env node
+
+const DEBUG_LABEL = 'hypersource-client'
+
+const minimist = require('minimist')
+const debug = require('debug')(DEBUG_LABEL)
+const hsurl = require('../')
+const pump = require('pump')
+const pkg = require('../package.json')
+const url = require('url')
+
+const { DEBUG = '' } = process.env
+
+const argv = minimist(process.argv.slice(2), {
+  string: [
+    'input',
+    'output',
+    'type',
+    'key',
+  ],
+
+  boolean: [
+    'version',
+    'debug',
+    'help',
+  ],
+
+  alias: {
+    input: 'i',
+    output: 'o',
+    type: 't',
+    version: 'V',
+    debug: 'D',
+    help: 'h',
+  },
+
+  default: {
+    type: 'hypercore'
+  }
+})
+
+const usage = `usage: hsurl [-hDV] [options] <endpoint>
+where options can be:
+
+  -i, --input     Path to storage for input feed
+  -o, --output    Path to storage for output feed
+  -k, --key       Public key for storage feed
+  -t, --type      The feed type (eg: hypercore|hyperdrive|hypertrie...) (Default: hypercore)
+  -h, --help      Show this message
+  -D, --debug     Enable debug output (DEBUG="${DEBUG_LABEL}")
+  -V, --version   Show program version
+`
+
+// enable 'debug()' if given from the command line are inferred from
+// the `DEBUG' environment variable
+if (argv.debug || /[^|,]?(hsurl)[,|$]?/.test(DEBUG)) {
+  require('debug').enable(`${DEBUG},${DEBUG_LABEL}`)
+  debug('Debug output is enabled')
+}
+
+if (argv.help) {
+  console.log(usage)
+  process.exit(0)
+}
+
+if (argv.version) {
+  console.log(pkg.version)
+  process.exit(0)
+}
+
+if (!argv.input) {
+  console.error('error: Please specify a path to a storage directory for an input feed')
+  process.exit(1)
+}
+
+try {
+  const { protocol, pathname } = url.parse(argv.input)
+  if ('dat:' === protocol && 64 === pathname.length) {
+    argv.type = 'hyperdrive'
+  }
+} catch (err) {
+  debug(err)
+}
+
+const [ endpoint ] = argv._
+const input = require(argv.type)(argv.input, argv.key, argv)
+const client = hsurl(input, endpoint)
+
+client.connect(onconnect)
+
+function onconnect(err, res, req, socket) {
+  if (err) {
+    console.error('error:', err.message)
+    debug(err)
+    client.close()
+    return process.nextTick(process.exit, 1)
+  }
+
+  res.once('update', () => {
+    const output = require(argv.type)(argv.output, res.key)
+    replicate(res, output, (err) => {
+      if (err) {
+        console.error('error:', err.message)
+        debug(err)
+        client.close()
+        return process.nextTick(process.exit, 1)
+      }
+    })
+  })
+}
+
+function replicate(src, dst, cb) {
+  const alice = src.replicate()
+  const bob = dst.replicate()
+  return pump(alice, bob, alice, cb)
+}
