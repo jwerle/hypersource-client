@@ -44,16 +44,18 @@ class Client extends EventEmitter {
       request.ready(() => {
         const pathname = `/${request.key.toString('hex')}`
 
-        this.swarm = hyperdiscovery(request)
+        this.discovery = hyperdiscovery(request)
         this.key = request.key
         this.url = String(new url.URL(pathname, this.endpoint))
 
-        this.swarm.on('error', (err) => {
+        this.discovery.setMaxListeners(0)
+        this.discovery._swarm.setMaxListeners(0)
+        this.discovery.on('error', (err) => {
           this.emit('error', err)
         })
 
 
-        this.swarm.on('peer', (peer) => {
+        this.discovery.on('peer', (peer) => {
           this.emit('peer', peer)
         })
 
@@ -89,20 +91,20 @@ class Client extends EventEmitter {
       }
     }
 
-    if (this.swarm) {
-      if ('function' === typeof this.swarm.close) {
-        this.swarm.close()
+    if (this.discovery) {
+      if ('function' === typeof this.discovery.close) {
+        this.discovery.close()
       }
     }
 
     this.connecting = false
     this.connected = false
     this.destroyed = true
+    this.discovery = null
     this.response = null
     this.request = null
     this.socket = null
     this.stream = null
-    this.swarm = null
     this.ready = thunky(noop) // will never resolve
     this.key = null
     this.url = null
