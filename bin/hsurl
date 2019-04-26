@@ -2,13 +2,17 @@
 
 const DEBUG_LABEL = 'hypersource-client'
 
+const datStorage = require('dat-storage')
 const minimist = require('minimist')
+const rimraf = require('rimraf')
 const debug = require('debug')(DEBUG_LABEL)
 const hsurl = require('../')
+const path = require('path')
 const pump = require('pump')
 const ram = require('random-access-memory')
 const pkg = require('../package.json')
 const url = require('url')
+const fs = require('fs')
 
 const { DEBUG = '' } = process.env
 
@@ -24,6 +28,7 @@ const argv = minimist(process.argv.slice(2), {
 
   boolean: [
     'stdout',
+    'force',
     'version',
     'debug',
     'help',
@@ -36,6 +41,7 @@ const argv = minimist(process.argv.slice(2), {
     version: 'V',
     debug: 'D',
     help: 'h',
+    force: 'f',
   },
 
   default: {
@@ -49,6 +55,7 @@ where options can be:
 
   -i, --input     Path to storage for input feed
   -o, --output    Path to storage for output feed
+  -f, --force     Force actions like overwriting a file or directory
   -k, --key       Public key for storage feed
   -t, --type      The feed type (eg: hypercore|hyperdrive|hypertrie...) (Default: 'hypercore')
   -h, --help      Show this message
@@ -89,23 +96,88 @@ if (argv.utf8) {
   argv.encoding = 'utf8'
 }
 
+if ('string' === typeof argv.output) {
+  try {
+    fs.accessSync(argv.output)
+    if (!argv.force) {
+      console.error('error:', 'Cannot overwrite output directory:', argv.output)
+      input.close()
+      process.exit(1)
+    } else {
+      try {
+        rimraf.sync(argv.output)
+      } catch (err) {
+        debug(err)
+        console.error('error:',
+          'Cannot remove existing output directory:', argv.output)
+        input.close()
+        process.exit(1)
+      }
+    }
+  } catch (err) {
+  }
+}
+
 try {
-  const { protocol, pathname } = url.parse(argv.input)
-  if ('dat:' === protocol && 64 === pathname.length) {
+  const stat = fs.statSync(path.join(argv.input, '.dat'))
+  if (stat.isDirectory()) {
     argv.type = 'hyperdrive'
+    argv.input = datStorage(argv.input)
+    argv.output = datStorage(argv.output)
+    argv.latest = true
   }
 } catch (err) {
   debug(err)
 }
 
-const [ endpoint ] = argv._
-const input = require(argv.type)(argv.input, argv.key, argv)
-let client = null
+if ('hyperdrive' !== argv.type) {
+  try {
+    const content = fs.statSync(path.join(argv.input, 'content'))
+    const metadata = fs.statSync(path.join(argv.input, 'metadata'))
+    if (content.isDirectory() && metadata.isDirectory()) {
+      argv.type = 'hyperdrive'
+    }
+  } catch (err) {
+    debug(err)
+  }
+}
 
+try {
+  const { protocol, pathname } = url.parse(argv.input)
+  if ('dat:' === protocol && 64 === pathname.length) {
+    argv.type = 'hyperdrive'
+    argv.input = datStorage(pathname)
+  }
+
+} catch (err) {
+  debug(err)
+}
+
+try {
+  const { protocol, pathname } = url.parse(argv.output)
+  if ('dat:' === protocol && 64 === pathname.length) {
+    argv.output = datStorage(pathname)
+  }
+
+} catch (err) {
+  debug(err)
+}
+
+const [ endpoint ] = argv._
+const input = require(argv.type)(argv.input, argv.key, {
+  sparse: argv.sparse,
+  latest: argv.latest,
+})
+
+let client = null
 if ('function' === typeof input.ready) {
   input.ready(onready)
 } else {
   input.on('ready', onready)
+}
+
+if ('hypercore' === argv.type && ram === argv.input && ram === argv.output) {
+  argv.stdout = true
 }
 
 function update(hyper, cb) {
@@ -119,7 +191,7 @@ function update(hyper, cb) {
     return hyper.update(cb)
   }
 
-  if ('function' === typeof hyper.feed.update) {
+  if (hyper.feed && 'function' === typeof hyper.feed.update) {
     return hyper.feed.update(cb)
   }
 
@@ -130,10 +202,35 @@ function sync(hyper, cb) {
   switch (argv.type) {
     case 'hypercore': return hyper.on('sync', cb)
     case 'hypertrie': return hyper.feed.on('sync', cb)
-    case 'hyperdb': return process.nextTick(cb)
+    case 'hyperdb': return process.nextTick(() => hyper.ready(cb))
   }
 
-  return hyper.on('sync', cb)
+  let syncing = false
+  hyper.once('content', oncontent)
+  hyper.once('syncing', onsyncing)
+  hyper.once('sync', onsync)
+
+  if ('hyperdrive' === argv.type) {
+    hyper.download('/', onsync)
+  }
+
+  function onsync() {
+    hyper.removeListener('content', oncontent)
+    hyper.removeListener('sync', onsync)
+    cb()
+  }
+
+  function onsyncing() {
+    syncing = true
+  }
+
+  function oncontent() {
+    if (!syncing) {
+      hyper.removeListener('syncing', onsync)
+      hyper.removeListener('sync', onsync)
+      process.nextTick(onsync)
+    }
+  }
 }
 
 function onready() {
@@ -163,13 +260,19 @@ function onconnect(err, res, req, socket) {
   update(res, onupdate)
 
   function onclose() {
-    process.exit(0)
+    process.nextTick(process.exit, 0)
   }
 
   function onupdate() {
-    output = require(argv.type)(argv.output, res.key)
-    replicate(res, output, onreplicate)
-    sync(output, onsync)
+    output = require(argv.type)(argv.output, res.key, {
+      sparse: argv.sparse,
+      latest: argv.latest,
+    })
+
+    output.ready(() => {
+      replicate(res, output, onreplicate)
+      sync(output, onsync)
+    })
   }
 
   function onreplicate(err) {
@@ -180,7 +283,8 @@ function onconnect(err, res, req, socket) {
       return process.nextTick(process.exit, 1)
     }
 
- }
+    client.close()
+  }
 
   function onsync() {
     if ('hypercore' === argv.type) {
@@ -191,8 +295,6 @@ function onconnect(err, res, req, socket) {
         return
       }
     }
-
-    client.close()
   }
 }
 
