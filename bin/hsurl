@@ -27,8 +27,11 @@ const argv = minimist(process.argv.slice(2), {
   ],
 
   boolean: [
-    'stdout',
     'force',
+    'live',
+    'stdout',
+    'sparse',
+    'latest',
     'version',
     'debug',
     'help',
@@ -42,10 +45,14 @@ const argv = minimist(process.argv.slice(2), {
     debug: 'D',
     help: 'h',
     force: 'f',
+    live: 'l',
   },
 
   default: {
+    live: false,
     type: 'hypercore',
+    latest: false,
+    sparse: false,
     encoding: 'binary',
   }
 })
@@ -61,6 +68,8 @@ where options can be:
   -h, --help      Show this message
   -D, --debug     Enable debug output (DEBUG="${DEBUG_LABEL}")
   -V, --version   Show program version
+      --sparse    Treat input as sparse input
+      --latest    Treat input (and output) latest (only for hyperdrive|DAT)
       --stdin     Read request from stdin
       --stdout    Output response to stdout
       --encoding  Set input encoding (--stdout) (Default: 'binary')
@@ -265,7 +274,6 @@ function onconnect(err, res, req, socket) {
 
   function onupdate() {
     output = require(argv.type)(argv.output, res.key, {
-      sparse: argv.sparse,
       latest: argv.latest,
     })
 
@@ -283,15 +291,23 @@ function onconnect(err, res, req, socket) {
       return process.nextTick(process.exit, 1)
     }
 
-    client.close()
+    if (!argv.live) {
+      client.close()
+    }
   }
 
   function onsync() {
     if ('hypercore' === argv.type) {
       if (true !== process.stdout.isTTY || argv.stdout) {
-        const stream = output.createReadStream()
-        stream.pipe(process.stdout)
-        stream.once('end', () => client.close())
+        const stream = output.createReadStream({ live: argv.live })
+        stream.on('end', () => client.close())
+        stream.on('data', (data) => {
+          if (data && !Buffer.isBuffer(data) && 'object' === typeof data) {
+            console.log(data)
+          } else {
+            process.stdout.write(data)
+          }
+        })
         return
       }
     }
@@ -299,7 +315,7 @@ function onconnect(err, res, req, socket) {
 }
 
 function replicate(src, dst, cb) {
-  const alice = src.replicate()
-  const bob = dst.replicate()
+  const alice = src.replicate({ live: argv.live })
+  const bob = dst.replicate({ live: argv.live })
   return pump(alice, bob, alice, cb)
 }
