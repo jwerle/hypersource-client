@@ -37,5 +37,16 @@
     "mirror-folder": "^3.0.0",
     "tape": "^4.10.1",
     "through2": "^3.0.1"
-  }
+  },
+  "directories": {
+    "example": "example"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jwerle/hypersource-client.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jwerle/hypersource-client/issues"
+  },
+  "homepage": "https://github.com/jwerle/hypersource-client#readme"
 }
