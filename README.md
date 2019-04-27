@@ -146,8 +146,7 @@ object that may look like:
 {
   endpoint: String, // the WebSocket endpoint to connect to (eg: ws://domain.com
   timeout: Number, // A timeout in milliseconds for the underlying hypercore protocol stream. Defaults to '30000'
-  discovery: Object | Boolean, // Options passed directly to
-'hyperdiscovery'. Set to 'false' to disable
+  discovery: Object | Boolean, // Options passed directly to 'hyperdiscovery'. Set to 'false' to disable
 }
 ```
 
