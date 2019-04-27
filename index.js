@@ -134,6 +134,7 @@ class Client extends EventEmitter {
       this.emit('handshake', this.stream)
 
       this.response = new this.Factory(ram, this.stream.remoteUserData, {
+        valueEncoding: this.request.valueEncoding || this.request._codec,
         latest: this.request.latest,
         sparse: this.request.sparse,
       })
