@@ -133,7 +133,11 @@ class Client extends EventEmitter {
     this.stream.once('handshake', () => {
       this.emit('handshake', this.stream)
 
-      this.response = new this.Factory(ram, this.stream.remoteUserData)
+      this.response = new this.Factory(ram, this.stream.remoteUserData, {
+        latest: this.request.latest,
+        sparse: this.request.sparse,
+      })
+
       this.response.replicate({
         timeout: this.timeout,
         stream: this.stream,
