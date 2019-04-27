@@ -1,6 +1,6 @@
 {
   "name": "hypersource-client",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Simple client to talk to HyperSource endpoints",
   "main": "index.js",
   "bin": {
