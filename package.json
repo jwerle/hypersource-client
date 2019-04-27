@@ -4,6 +4,7 @@
   "description": "Simple client to talk to HyperSource endpoints",
   "main": "index.js",
   "bin": {
+    "hypersource-client": "bin/hsurl",
     "hsurl": "bin/hsurl"
   },
   "scripts": {
