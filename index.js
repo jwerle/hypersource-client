@@ -44,20 +44,22 @@ class Client extends EventEmitter {
       request.ready(() => {
         const pathname = `/${request.key.toString('hex')}`
 
-        this.discovery = hyperdiscovery(request)
         this.key = request.key
         this.url = String(new url.URL(pathname, this.endpoint))
 
-        this.discovery.setMaxListeners(0)
-        this.discovery._swarm.setMaxListeners(0)
-        this.discovery.on('error', (err) => {
-          this.emit('error', err)
-        })
+        if (false !== opts.discovery) {
+          this.discovery = hyperdiscovery(request, opts.discovery)
+          this.discovery.setMaxListeners(0)
+          this.discovery._swarm.setMaxListeners(0)
+          this.discovery.on('error', (err) => {
+            this.emit('error', err)
+          })
 
 
-        this.discovery.on('peer', (peer) => {
-          this.emit('peer', peer)
-        })
+          this.discovery.on('peer', (peer) => {
+            this.emit('peer', peer)
+          })
+        }
 
         ready()
       })
