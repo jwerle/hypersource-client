@@ -220,15 +220,19 @@ where options can be:
 
   -i, --input     Path to storage for input feed
   -o, --output    Path to storage for output feed
+  -f, --force     Force actions like overwriting a file or directory
   -k, --key       Public key for storage feed
   -t, --type      The feed type (eg: hypercore|hyperdrive|hypertrie...) (Default: 'hypercore')
   -h, --help      Show this message
   -D, --debug     Enable debug output (DEBUG="hypersource-client")
   -V, --version   Show program version
+      --sparse    Treat input as sparse input
+      --latest    Treat input (and output) latest (only for hyperdrive|DAT)
       --stdin     Read request from stdin
       --stdout    Output response to stdout
       --encoding  Set input encoding (--stdout) (Default: 'binary')
       --utf8      Alias for '--enoding=utf8'
+
 ```
 
 ## License
