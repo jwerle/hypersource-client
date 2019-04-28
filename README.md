@@ -58,9 +58,8 @@ const pump = require('pump')
 const path = require('path')
 const ram = require('random-access-memory')
 
-const registry = hyperdrive(ram)
 const bundle = hyperdrive(ram)
-const server = hypersource({ registry }, onrequest)
+const server = hypersource(onrequest)
 
 server.listen(3000, onlistening)
 
@@ -122,7 +121,6 @@ function onconnect(err, res, req, socket) {
 
       index.on('end', () => {
         server.close()
-        registry.close()
         process.nextTick(process.exit, 0)
       })
 
