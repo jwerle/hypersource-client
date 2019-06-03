@@ -46,6 +46,7 @@ const argv = minimist(process.argv.slice(2), {
     help: 'h',
     force: 'f',
     live: 'l',
+    key: 'k',
   },
 
   default: {
