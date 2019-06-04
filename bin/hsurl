@@ -166,6 +166,7 @@ try {
 try {
   const { protocol, pathname } = url.parse(argv.output)
   if ('dat:' === protocol && 64 === pathname.length) {
+    argv.type = 'hyperdrive'
     argv.output = datStorage(pathname)
   }
 
