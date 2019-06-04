@@ -9,6 +9,7 @@ const debug = require('debug')(DEBUG_LABEL)
 const hsurl = require('../')
 const path = require('path')
 const pump = require('pump')
+const once = require('once')
 const ram = require('random-access-memory')
 const pkg = require('../package.json')
 const url = require('url')
@@ -95,11 +96,11 @@ if (argv.version) {
 }
 
 if (!argv.input) {
-  argv.input = ram
+  argv.input = argv.output || ram
 }
 
 if (!argv.output) {
-  argv.output = ram
+  argv.output = argv.input || ram
 }
 
 if (argv.utf8) {
@@ -135,6 +136,9 @@ try {
     argv.input = datStorage(argv.input)
     argv.output = datStorage(argv.output)
     argv.latest = true
+    argv.key = argv.k = String(
+      fs.readFileSync(path.join(argv.input), '.dat', 'metadata.key')
+    )
   }
 } catch (err) {
   debug(err)
@@ -152,26 +156,39 @@ if ('hyperdrive' !== argv.type) {
   }
 }
 
-try {
-  const { protocol, pathname } = url.parse(argv.input)
-  if ('dat:' === protocol && 64 === pathname.length) {
-    argv.type = 'hyperdrive'
-    argv.input = datStorage(pathname)
-  }
+if ('string' === typeof argv.input) {
+  try {
+    const { protocol, hostname } = url.parse(argv.input)
+    if ('dat:' === protocol && hostname && 64 === hostname.length) {
+      argv.type = 'hyperdrive'
+      argv.input = datStorage(hostname)
 
-} catch (err) {
-  debug(err)
+      if ('string' === typeof argv.output) {
+        argv.output = datStorage(argv.output)
+      }
+
+      argv.latest = true
+      argv.key = argv.k = hostname
+    }
+
+  } catch (err) {
+    debug(err)
+  }
 }
 
-try {
-  const { protocol, pathname } = url.parse(argv.output)
-  if ('dat:' === protocol && 64 === pathname.length) {
-    argv.type = 'hyperdrive'
-    argv.output = datStorage(pathname)
-  }
+if ('string' === typeof argv.output) {
+  try {
+    const { protocol, hostname } = url.parse(argv.output)
+    if ('dat:' === protocol && 64 === hostname.length) {
+      argv.type = 'hyperdrive'
+      argv.output = datStorage(hostname)
+      argv.latest = true
+      argv.key = argv.k = hostname
+    }
 
-} catch (err) {
-  debug(err)
+  } catch (err) {
+    debug(err)
+  }
 }
 
 const [ endpoint ] = argv._
@@ -192,6 +209,8 @@ if ('hypercore' === argv.type && ram === argv.input && ram === argv.output) {
 }
 
 function update(hyper, cb) {
+  cb = once(cb)
+
   switch (argv.type) {
     case 'hypercore': return hyper.update(cb)
     case 'hypertrie': return hyper.feed.update(cb)
@@ -206,10 +225,15 @@ function update(hyper, cb) {
     return hyper.feed.update(cb)
   }
 
-  return hyper.on('update', cb)
+  if (!hyper.content) {
+    hyper.on('content', cb)
+  }
+
+  hyper.once('update', cb)
 }
 
 function sync(hyper, cb) {
+  cb = once(cb)
   switch (argv.type) {
     case 'hypercore': return hyper.on('sync', cb)
     case 'hypertrie': return hyper.feed.on('sync', cb)
@@ -275,9 +299,11 @@ function onconnect(err, res, req, socket) {
   }
 
   function onupdate() {
-    output = require(argv.type)(argv.output, res.key, {
-      latest: argv.latest,
-    })
+    if (argv.o) {
+      output = require(argv.type)(argv.output, argv.k || res.key, {
+        latest: argv.latest,
+      })
+    }
 
     output.ready(() => {
       replicate(res, output, onreplicate)
