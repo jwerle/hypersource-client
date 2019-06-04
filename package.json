@@ -27,6 +27,7 @@
     "hyperdrive": "^9.14.5",
     "hypertrie": "^3.4.3",
     "minimist": "^1.2.0",
+    "once": "^1.4.0",
     "pump": "^3.0.0",
     "random-access-memory": "^3.1.1",
     "rimraf": "^2.6.3",
