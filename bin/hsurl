@@ -165,10 +165,11 @@ if ('string' === typeof argv.input) {
 
       if ('string' === typeof argv.output) {
         argv.output = datStorage(argv.output)
+      } else {
+        argv.key = argv.k = hostname
       }
 
       argv.latest = true
-      argv.key = argv.k = hostname
     }
 
   } catch (err) {
@@ -183,7 +184,6 @@ if ('string' === typeof argv.output) {
       argv.type = 'hyperdrive'
       argv.output = datStorage(hostname)
       argv.latest = true
-      argv.key = argv.k = hostname
     }
 
   } catch (err) {
